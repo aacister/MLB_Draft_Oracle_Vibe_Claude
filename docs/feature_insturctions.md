@@ -61,3 +61,25 @@ Scaffolded the project structure per CLAUDE.MD + decisions.md:
 | `.gitignore` | Added `data/` and `memory/` (created locally per README mkdir step) |
 
 Deferred to later tickets: start/stop scripts, backend source code (MLB-6+), frontend source + vite.config.ts + tsconfig.json (MLB-11).
+
+---
+
+## MLB-6: Build the SQLite layer (models + repository) and add tests
+
+**Status:** Done — merged to `main` via branch `mlb-6-sqlite-layer`
+
+First substantive backend code. SQLAlchemy 2.x ORM layer plus function-style repositories, all conforming to the `sqlite-conventions` skill.
+
+| Module | Contents |
+|---|---|
+| `backend/app/paths.py` | Single source of truth for `./data/` and `./memory/{drafts,vectors/{picks,adp},agents,search_cache,ingestion}/` paths; `ensure_dirs()`, `db_url()` |
+| `backend/app/db.py` | `create_db_engine(url)` (param URL for tests), `init_schema(engine)`, `make_session_factory(engine)` |
+| `backend/app/models.py` | `Draft`, `Team`, `Player`, `Pick`, `Grade`, `AdpRecord` with relationships, cascade-delete (`Draft → Team/Pick`), the 4 indexes from the skill, and `Player.id` as MLB natural integer |
+| `backend/app/repositories/*.py` | One file per table, function-style CRUD (no class hierarchies) |
+| `backend/tests/conftest.py` | Fresh in-memory SQLite engine + session per test |
+| `backend/tests/test_models.py` | 7 tests: defaults, FK relationships, cascade delete, natural id |
+| `backend/tests/test_repositories.py` | 12 tests covering every repository function |
+
+`uv sync` resolved 115 packages; `uv run pytest` → **19/19 passing in 0.26s**. Also committed `uv.lock` for reproducibility and added `pythonpath = ["."]` to `pyproject.toml`'s pytest config.
+
+Used `datetime.UTC` (Python 3.12+) per CLAUDE.MD's "latest APIs" rule.
