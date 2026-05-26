@@ -103,3 +103,12 @@ First end-to-end backend feature. Ingests 2025 MLB season league leaders into SQ
 `uv run pytest` → **57/57 passing in 3.57s**.
 
 Also fixed the README quick-start: module paths use `app.ingest` and `app.main` (not `backend.app.*`), with `cd backend` made explicit before `uv` commands.
+
+### MLB-7 follow-up fix: position lookup + catcher supplement
+
+Merged to `main` via `mlb-7-fix-position-and-catchers` after live-API testing revealed two root causes:
+
+1. **Position lookup bug.** `/api/v1/stats/leaders` does NOT include `primaryPosition` — the original code's `person.primaryPosition.abbreviation` was always `None`, dropping all 366 merged players. Added `fetch_people()` that batch-calls `/api/v1/people?personIds=...` (cached per sorted-id-batch hash) to resolve positions.
+2. **Catcher coverage.** Catchers rarely appear in offensive top-75, so the leader-only pool yielded 11 catchers vs the ~40–60 target. Added a roster-walk supplement: `fetch_teams()` + `fetch_team_roster()` + `collect_position_ids("C")` + `fetch_hitting_stats_batch()` (which uses `/api/v1/people?personIds=...&hydrate=stats(...)` — discovered the plain `/stats` endpoint silently ignores `personIds`).
+
+Per-position counts after fix: **C=103, 1B=46, OF=71, P=194** (414 total). All positions meet or exceed target. 66/66 tests passing.
