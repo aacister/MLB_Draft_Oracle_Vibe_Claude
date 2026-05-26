@@ -83,3 +83,23 @@ First substantive backend code. SQLAlchemy 2.x ORM layer plus function-style rep
 `uv sync` resolved 115 packages; `uv run pytest` → **19/19 passing in 0.26s**. Also committed `uv.lock` for reproducibility and added `pythonpath = ["."]` to `pyproject.toml`'s pytest config.
 
 Used `datetime.UTC` (Python 3.12+) per CLAUDE.MD's "latest APIs" rule.
+
+---
+
+## MLB-7: Build the 2025 player-pool ingestion and verify it populates the table
+
+**Status:** Done — merged to `main` via branch `mlb-7-player-pool-ingestion`
+
+First end-to-end backend feature. Ingests 2025 MLB season league leaders into SQLite via `mlb-statsapi`, with file-based response caching so a fresh DB can be re-seeded offline.
+
+| Component | Detail |
+|---|---|
+| `backend/app/ingest.py` | Single module (~230 LoC). Hitting categories: HR, RBI, R, SB, AVG, OBP, SLG, AB. Pitching categories: K, W, S, ERA, WHIP, IP. Position collapse: `C→C`; `1B/3B/DH→1B`; `LF/CF/RF/OF→OF`; `P/SP/RP/LHP/RHP→P`; `2B/SS/UT→skipped`. |
+| `fetch_leaders()` | Wraps `statsapi.get('stats_leaders', ...)`. Caches per (category, season, group, limit) to `memory/ingestion/leaders_<group>_<category>_<season>_l<limit>.json`. |
+| `ingest_season()` | Fetches all 14 categories, merges by player id, calls `upsert_player` for each player whose position maps successfully. |
+| `main()` | argparse CLI; runs via `uv run python -m app.ingest --season 2025 [--limit 75]` from `backend/`. |
+| `backend/tests/test_ingest.py` | 38 new tests covering position mapping (parametrized), value parsing, record merging, cache hit/miss, full ingestion with mocked `statsapi.get`, idempotency via cache, position-based exclusion. |
+
+`uv run pytest` → **57/57 passing in 3.57s**.
+
+Also fixed the README quick-start: module paths use `app.ingest` and `app.main` (not `backend.app.*`), with `cd backend` made explicit before `uv` commands.
