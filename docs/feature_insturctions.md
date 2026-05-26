@@ -33,3 +33,11 @@ Created five custom Claude Code skills in `.claude/skills/`:
 | `agent-prompts.md` | House style for Researcher/Drafter/Grader agents: input shapes, Pydantic Structured Output schemas, max-turn limits (6/4/3), retry logic |
 | `vector-store.md` | Embedding model (`all-MiniLM-L6-v2`, local CPU, 384-dim), pick/ADP JSON file schemas, NumPy cosine-search, mtime-keyed in-process cache |
 | `local-only.md` | Hard constraint checklist: no cloud services, no external workers, SQLite+JSON-on-disk only, permitted external calls (OpenAI, ddgs, mlb-statsapi) |
+
+---
+
+## MLB-4: Write docs/decisions.md restating the choices in one-or-two-sentence form
+
+**Status:** Done — merged to `main` via branch `mlb-4-decisions-doc`
+
+Created `docs/decisions.md` as a single-page summary for contributors. Restates the 6 hard constraints (Python 3.12+, FastAPI, SQLite, React+Tailwind, local-only, JSON-on-disk) and the 10 design decisions (OpenAI Agents SDK with gpt-4o-mini, sentence-transformers MiniLM-L6-v2 local embeddings, DuckDuckGo via ddgs, MLB-StatsAPI, NumPy vector store, SSE streaming, asyncio-only concurrency, Vite+React 19+Tailwind 4, SQLAlchemy 2.x create_all). Documents the contract: do not deviate without asking. Also lists the required `.env.example` variables.
