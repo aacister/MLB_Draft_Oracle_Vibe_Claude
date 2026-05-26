@@ -134,3 +134,36 @@ Pure-function math layer, implemented and TDD'd before any agent work (per ticke
 - `test_strategies.py` (36) — op handling (>=, <=, !=), None/non-numeric/string-numeric coercion, all-tag scenarios, parametrized threshold verification per strategy.
 - `test_vectors.py` (17) — cosine math (identical/opposite/orthogonal/scale-invariant/zero-norm), centroid mean + cold-start fallback, round-trip write/load, mtime cache hit and invalidation (with Windows ~16ms tolerance).
 - `test_grading.py` (16) — tag_fit edges, cohort_fit with synthetic vectors (no model load), exclude-current-draft, formula verification, perfect-100, weighted-75 intermediate case.
+
+---
+
+## MLB-9: Build the agents (Researcher, Drafter, Grader) and the draft engine
+
+**Status:** Done — merged to `main` via branch `mlb-9-agents-and-engine`
+
+The brain of the application: 3 agents + snake-draft engine. LLM and web search fully mocked in tests.
+
+| Component | Detail |
+|---|---|
+| `app/search.py` | `ddgs` wrapper with 24h file cache at `./memory/search_cache/<sha256(query)>.json` |
+| `app/snapshots.py` | `write_snapshot` rewrites `./memory/drafts/<id>.json` with full draft + teams + picks |
+| `app/events.py` | Append-only JSONL event log at `./memory/drafts/<id>.events.jsonl`; sequential string ids for SSE `Last-Event-ID` resumption |
+| `app/agents/models.py` | Pydantic Structured Outputs: `Candidate`, `ResearchResult`, `DraftPick`, `GradeResult` (`Literal["A","B","C","D","F"]`) |
+| `app/agents/tools.py` | `web_search` `@function_tool` exposed to the Researcher |
+| `app/agents/researcher.py` | `gpt-4o-mini`, max_turns=6, tool=[web_search]; input includes strategy + roster needs + available pool + draft history |
+| `app/agents/drafter.py` | max_turns=4, no tools; picks one candidate with 2-3 sentence rationale |
+| `app/agents/grader.py` | max_turns=3, no tools; receives pre-computed alignment_score, produces letter per fixed 5-tier scale (90+=A, 75+=B, 55+=C, 35+=D, else F) |
+| `app/engine.py` | `run_draft()` orchestration: snake-order picks with Researcher→Drafter→validation-retry, embed + write vectors, ADP records, snapshot rewrite, per-pick events; post-draft per-team grading with alignment_score (excludes current draft from cohort) |
+
+**Key design decisions:**
+- Pick validation: `player_id` not drafted AND `position` not already filled on team
+- Drafter retry: drop rejected candidate, re-call (max 3 attempts); `DraftError` if exhausted
+- Snake order: rounds 1/3/… forward, 2/4/… reversed
+- Researcher tool list = `[web_search]` only (ADP lookup tool deferred — no ADP data on first draft)
+- Engine emits these event types: `draft_started`, `pick_starting`, `research_complete`, `pick_completed`, `team_graded`, `draft_completed`
+
+**Tests:** 174/174 passing in 12.24s.
+
+- `test_search.py` (6), `test_snapshots.py` (6), `test_events.py` (8)
+- `test_agents.py` (4) — mocks `agents.Runner.run` via `AsyncMock`, verifies input shape + final_output unwrap + max_turns
+- `test_engine.py` (4) — end-to-end 2-team/2-round snake draft with mocked agents (real DB, real embed, real file I/O); retry-skip test; `DraftError` cases
