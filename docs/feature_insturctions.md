@@ -112,3 +112,25 @@ Merged to `main` via `mlb-7-fix-position-and-catchers` after live-API testing re
 2. **Catcher coverage.** Catchers rarely appear in offensive top-75, so the leader-only pool yielded 11 catchers vs the ~40–60 target. Added a roster-walk supplement: `fetch_teams()` + `fetch_team_roster()` + `collect_position_ids("C")` + `fetch_hitting_stats_batch()` (which uses `/api/v1/people?personIds=...&hydrate=stats(...)` — discovered the plain `/stats` endpoint silently ignores `personIds`).
 
 Per-position counts after fix: **C=103, 1B=46, OF=71, P=194** (414 total). All positions meet or exceed target. 66/66 tests passing.
+
+---
+
+## MLB-8: Build the vector store, embeddings, and grading algorithm with unit tests
+
+**Status:** Done — merged to `main` via branch `mlb-8-vector-store-grading`
+
+Pure-function math layer, implemented and TDD'd before any agent work (per ticket guidance).
+
+| Module | Contents |
+|---|---|
+| `backend/app/embeddings.py` | Lazy-loaded `sentence-transformers/all-MiniLM-L6-v2` wrapper (cached via `functools.cache`). `embed()` returns 384-dim L2-normalized vectors. `pick_text` / `adp_text` use the canonical text recipes from the `vector-store` skill. `PICK_STAT_KEYS` defines the fixed stat order so embeddings stay stable across runs. |
+| `backend/app/strategies.py` | `StrategyTag` dataclass (stat, op, threshold) with `matches()` handling missing / None / non-numeric values; `Strategy` dataclass with `stat_clears_any_tag()`. `STRATEGIES` registers all 6 from CLAUDE.MD with explicit thresholds (e.g., Power Hitting: HR≥25 ∨ SLG≥0.500 ∨ RBI≥80; Ace Pitching: K≥150 ∨ ERA≤3.50 ∨ WHIP≤1.20). |
+| `backend/app/vectors.py` | `write_pick_vector` / `write_adp_vector` emit one JSON file per record under `./memory/vectors/{picks,adp}/`. `load_*_vectors` with mtime-keyed in-process cache. `cosine_similarity` zero-norm-safe. `find_cohort_centroid` implements the cold-start fallback (use all vectors when <5 match strategy; only `None` when fully empty). |
+| `backend/app/grading.py` | `tag_fit = hits / total`; `cohort_fit = (mean_cosine + 1) / 2`, excludes `current_draft_id` so a team isn't compared to its own picks; `alignment_score = round(100 * (0.5 * cohort + 0.5 * tag))`. Weights centralized as `TAG_WEIGHT` / `COHORT_WEIGHT`. |
+
+**Tests:** 146/146 passing.
+
+- `test_embeddings.py` (11) — recipe order, 384-dim, L2 norm ≈ 1, determinism, short-string handling. Uses real model with cached load.
+- `test_strategies.py` (36) — op handling (>=, <=, !=), None/non-numeric/string-numeric coercion, all-tag scenarios, parametrized threshold verification per strategy.
+- `test_vectors.py` (17) — cosine math (identical/opposite/orthogonal/scale-invariant/zero-norm), centroid mean + cold-start fallback, round-trip write/load, mtime cache hit and invalidation (with Windows ~16ms tolerance).
+- `test_grading.py` (16) — tag_fit edges, cohort_fit with synthetic vectors (no model load), exclude-current-draft, formula verification, perfect-100, weighted-75 intermediate case.
