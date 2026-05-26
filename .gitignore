@@ -67,6 +67,7 @@ yarn-error.log*
 # IDE
 .vscode/
 .idea/
+.vs/
 *.swp
 *.swo
 *~
@@ -78,6 +79,10 @@ Thumbs.db
 # Database
 *.db
 *.sqlite3
+
+# Runtime data and memory (created locally; see README)
+data/
+memory/
 
 # Alembic
 alembic/versions/*.pyc
