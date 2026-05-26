@@ -15,19 +15,18 @@ See [docs/decisions.md](docs/decisions.md) for the rationale behind each choice.
 ## Quick Start
 
 ```bash
-# clone, then:
-uv sync                                        # install backend deps
+# from project root:
 cp .env.example .env                           # add your OPENAI_API_KEY
 mkdir -p data memory/{drafts,vectors/picks,vectors/adp,agents,search_cache,ingestion}
 
-# ingest the 2025 player pool (once)
-uv run python -m backend.app.ingest
+# backend: setup, ingest the 2025 pool, then serve
+cd backend
+uv sync
+uv run python -m app.ingest                    # populates 2025 player pool (once)
+uv run uvicorn app.main:app --reload --port 8000   # http://localhost:8000
 
-# backend → http://localhost:8000
-uv run uvicorn backend.app.main:app --reload --port 8000
-
-# frontend → http://localhost:5173 (in another terminal)
-cd frontend && npm install && npm run dev
+# frontend (in a separate terminal, from project root)
+cd frontend && npm install && npm run dev      # http://localhost:5173
 ```
 
 ## MCP Servers (Claude Code)
