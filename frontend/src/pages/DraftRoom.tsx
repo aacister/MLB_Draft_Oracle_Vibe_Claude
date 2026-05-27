@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Play, Loader2, ExternalLink } from "lucide-react";
 import { api } from "../api";
@@ -155,12 +155,23 @@ export function DraftRoom() {
     void reload();
   }, [draftId]);
 
-  // Re-fetch snapshot when a pick event arrives so team panels stay current
+  // Re-fetch snapshot when a pick or completion event arrives. We look at the
+  // most-recent SIGNIFICANT event (not just the last event), because React 18
+  // can batch multiple SSE messages into one state update — e.g. pick_completed
+  // immediately followed by the next pick_starting — and a "latest === last"
+  // check would skip the reload. Dedupe by event id so each one reloads once.
+  const lastReloadIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (events.length === 0) return;
-    const latest = events[events.length - 1];
-    if (latest.type === "pick_completed" || latest.type === "draft_completed") {
-      void reload();
+    for (let i = events.length - 1; i >= 0; i--) {
+      const ev = events[i];
+      if (ev.type === "pick_completed" || ev.type === "draft_completed") {
+        if (ev.id !== lastReloadIdRef.current) {
+          lastReloadIdRef.current = ev.id;
+          void reload();
+        }
+        break;
+      }
     }
   }, [events]);
 
