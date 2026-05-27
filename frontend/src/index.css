@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent-yellow: #ecad0a;
+  --color-blue-primary: #209dd7;
+  --color-purple-secondary: #753991;
+  --color-dark-navy: #032147;
+  --color-gray-text: #888888;
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f5f7fa;
+  color: #032147;
+  font-family: var(--font-sans);
+}
+
+h1, h2, h3 {
+  color: #032147;
+}
