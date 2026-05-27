@@ -263,6 +263,58 @@ async def test_drafter_hallucinated_id_falls_back(
 
 
 @pytest.mark.asyncio
+async def test_researcher_fabricated_id_filtered_before_drafter(
+    session: Session, isolated_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every Researcher call mixes in a fabricated player_id. The engine
+    must filter it out before passing the candidate list to the Drafter,
+    so the Drafter can never select it.
+    """
+    draft_id, team_a, _ = _seed_draft(session, num_rounds=1)
+
+    seen_candidate_ids: list[set[int]] = []
+
+    # Two-call mock: each call returns one valid + one fabricated id so the
+    # second pick (different team) still has a real option to choose.
+    researcher_calls = iter([
+        [
+            _candidate_for(100, "Judge", "OF", 1),  # valid
+            _candidate_for(999999, "Phantom A", "OF", 2),  # fabricated
+        ],
+        [
+            _candidate_for(200, "Olson", "1B", 1),  # valid
+            _candidate_for(999998, "Phantom B", "1B", 2),  # fabricated
+        ],
+    ])
+
+    async def fake_researcher(**_kwargs):
+        return ResearchResult(candidates=next(researcher_calls))
+
+    drafter_picks = iter([
+        _draft_pick_for(100, "Judge", "OF"),
+        _draft_pick_for(200, "Olson", "1B"),
+    ])
+
+    async def fake_drafter(candidates, _roster, _strategy):
+        seen_candidate_ids.append({c.player_id for c in candidates})
+        return next(drafter_picks)
+
+    async def fake_grader(**_kwargs):
+        return GradeResult(letter="B", rationale="ok.")
+
+    monkeypatch.setattr(engine_module, "run_researcher", fake_researcher)
+    monkeypatch.setattr(engine_module, "run_drafter", fake_drafter)
+    monkeypatch.setattr(engine_module, "run_grader", fake_grader)
+
+    await run_draft(session, draft_id)
+
+    # The Drafter never saw either fabricated id.
+    for s in seen_candidate_ids:
+        assert 999999 not in s, f"fabricated id 999999 reached the Drafter: {s}"
+        assert 999998 not in s, f"fabricated id 999998 reached the Drafter: {s}"
+
+
+@pytest.mark.asyncio
 async def test_engine_raises_on_unknown_draft(session: Session, isolated_paths: Path) -> None:
     with pytest.raises(DraftError):
         await run_draft(session, "does-not-exist")

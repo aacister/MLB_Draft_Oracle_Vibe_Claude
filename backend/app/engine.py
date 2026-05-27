@@ -200,17 +200,37 @@ async def _do_pick(
             _pick_summary(p) for p in pick_repo.list_picks_for_draft(session, draft.id)
         ],
     )
+
+    # Filter Researcher candidates against the actual pool. gpt-4o-mini sometimes
+    # produces a real player name with a fabricated player_id (it knows the player
+    # exists but not the MLB Stats API id). Dropping those before the Drafter sees
+    # them prevents the bad id from propagating into the validated candidate set.
+    pool_ids = {p.id for p in available}
+    valid_candidates = [c for c in research.candidates if c.player_id in pool_ids]
+    dropped = len(research.candidates) - len(valid_candidates)
+    if dropped:
+        logger.warning(
+            "Dropped %d/%d Researcher candidates with fabricated player_ids",
+            dropped,
+            len(research.candidates),
+        )
+    if not valid_candidates:
+        raise DraftError(
+            f"Researcher returned {len(research.candidates)} candidates but none "
+            "had a player_id present in the pool"
+        )
+
     emit_event(
         draft.id,
         {
             "type": "research_complete",
             "team_id": team.id,
-            "candidates": [c.model_dump() for c in research.candidates],
+            "candidates": [c.model_dump() for c in valid_candidates],
         },
     )
 
     chosen = await _select_pick(
-        research.candidates, team_picks, drafted_ids, team.strategy_name
+        valid_candidates, team_picks, drafted_ids, team.strategy_name
     )
 
     # Resolve the player BEFORE persisting so a hallucinated id from the
