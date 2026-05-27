@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+# In local dev (backend/app/paths.py), three parents up lands on the repo root.
+# In Docker the layout is /app/app/paths.py — three parents up is `/`, which is
+# wrong. Honour APP_ROOT when set so the container can point at /app explicitly.
+_root_env = os.environ.get("APP_ROOT")
+ROOT = Path(_root_env) if _root_env else Path(__file__).resolve().parent.parent.parent
 
 DATA_DIR = ROOT / "data"
 MEMORY_DIR = ROOT / "memory"

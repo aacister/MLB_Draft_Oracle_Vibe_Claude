@@ -108,10 +108,11 @@ class TestSeasonShift:
         assert season_shift(session) == []
 
     def test_rolling_mean_smooths_across_drafts(self, session: Session) -> None:
+        import time as _time
         player_repo.upsert_player(session, 1, "P", "NYY", "OF", {})
         d1 = draft_repo.create_draft(session, name="D1")
+        _time.sleep(0.02)  # Windows datetime.now() ~16ms resolution; force a gap
         d2 = draft_repo.create_draft(session, name="D2")
-        # d1 has pick_number=10; d2 has pick_number=20
         adp_repo.create_adp_record(session, d1.id, 1, 10, 2025)
         adp_repo.create_adp_record(session, d2.id, 1, 20, 2025)
         session.commit()

@@ -42,6 +42,9 @@ RUN mkdir -p /app/data \
 # Entrypoint: re-ingest (cache makes this nearly free on subsequent runs)
 # then serve. The DB is recreated by Base.metadata.create_all at boot.
 ENV PYTHONUNBUFFERED=1
+# paths.py honors APP_ROOT so data/ and memory/ resolve to /app
+# (the container WORKDIR + volume mount target) instead of /.
+ENV APP_ROOT=/app
 EXPOSE 8000
 
 CMD ["sh", "-c", "uv run python -m app.ingest --season 2025 && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"]
