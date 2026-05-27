@@ -40,6 +40,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Database initialized")
     if not hasattr(app.state, "running_drafts"):
         app.state.running_drafts = set()
+    if not hasattr(app.state, "background_tasks"):
+        app.state.background_tasks = set()
     yield
 
 

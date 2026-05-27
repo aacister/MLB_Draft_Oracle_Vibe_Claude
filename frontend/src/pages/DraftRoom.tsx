@@ -140,7 +140,10 @@ export function DraftRoom() {
   const { draftId } = useParams<{ draftId: string }>();
   const [snapshot, setSnapshot] = useState<DraftSnapshot | null>(null);
   const [starting, setStarting] = useState(false);
-  const { events, connected } = useDraftStream(snapshot?.status === "pending" ? null : draftId ?? null);
+  // Open the SSE stream as soon as we have a draftId; the backend stream
+  // handles all statuses (pending / running / completed) and closes itself
+  // on completion. Gating on status would race with the engine and miss events.
+  const { events, connected } = useDraftStream(draftId ?? null);
 
   async function reload() {
     if (!draftId) return;
