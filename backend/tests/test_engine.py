@@ -224,6 +224,45 @@ async def test_drafter_retry_skips_invalid_pick(
 
 
 @pytest.mark.asyncio
+async def test_drafter_hallucinated_id_falls_back(
+    session: Session, isolated_paths: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drafter returning a player_id NOT in the candidate list is rejected;
+    after the retry budget is exhausted the engine falls back to the top
+    valid candidate instead of raising.
+    """
+    draft_id, team_a, _ = _seed_draft(session, num_rounds=1)
+
+    async def fake_researcher(**_kwargs):
+        return ResearchResult(candidates=[
+            _candidate_for(100, "Judge", "OF", 1),
+            _candidate_for(200, "Olson", "1B", 2),
+        ])
+
+    # Drafter consistently hallucinates an id (999999) not in the candidates.
+    async def fake_drafter(*_args, **_kwargs):
+        return _draft_pick_for(999999, "Phantom", "OF")
+
+    async def fake_grader(**_kwargs):
+        return GradeResult(letter="C", rationale="OK.")
+
+    monkeypatch.setattr(engine_module, "run_researcher", fake_researcher)
+    monkeypatch.setattr(engine_module, "run_drafter", fake_drafter)
+    monkeypatch.setattr(engine_module, "run_grader", fake_grader)
+
+    await run_draft(session, draft_id)
+
+    # The engine must NOT have inserted a pick with the hallucinated id.
+    team_a_picks = pick_repo.list_picks_for_team(session, team_a)
+    new_picks = [p for p in team_a_picks if p.round > 0]
+    assert len(new_picks) == 1
+    assert new_picks[0].player_id != 999999
+    # The fallback must have picked the top valid candidate (Judge, id=100).
+    assert new_picks[0].player_id == 100
+    assert "Fallback" in new_picks[0].rationale
+
+
+@pytest.mark.asyncio
 async def test_engine_raises_on_unknown_draft(session: Session, isolated_paths: Path) -> None:
     with pytest.raises(DraftError):
         await run_draft(session, "does-not-exist")

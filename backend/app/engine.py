@@ -77,11 +77,51 @@ def _roster_needs(team_picks: list[Any]) -> list[str]:
     return sorted(ALL_POSITIONS - filled)
 
 
-def _validate(pick: DraftPick, team_picks: list[Any], drafted_ids: set[int]) -> bool:
+def _validate(
+    pick: DraftPick,
+    team_picks: list[Any],
+    drafted_ids: set[int],
+    candidate_ids: set[int],
+) -> bool:
+    """A Drafter pick is valid iff:
+
+    - ``player_id`` is one of the Researcher's candidates (rejects hallucinations)
+    - ``player_id`` is not already drafted in this draft
+    - ``position`` is not already filled on this team
+    """
+    if pick.player_id not in candidate_ids:
+        return False
     if pick.player_id in drafted_ids:
         return False
     filled = {p.player.position for p in team_picks}
     return pick.position not in filled
+
+
+def _fallback_pick(
+    candidates: list[Candidate],
+    team_picks: list[Any],
+    drafted_ids: set[int],
+) -> DraftPick | None:
+    """The highest-ranked candidate (Researcher already sorted them) that
+    still has an open position and isn't drafted. Used when the Drafter
+    exhausts its retry budget without producing a valid pick.
+    """
+    filled = {p.player.position for p in team_picks}
+    for c in candidates:
+        if c.player_id in drafted_ids:
+            continue
+        if c.position in filled:
+            continue
+        return DraftPick(
+            player_id=c.player_id,
+            player_name=c.player_name,
+            position=c.position,
+            rationale=(
+                f"Fallback selection: top Researcher-ranked candidate at {c.position} "
+                f"after the Drafter could not produce a valid pick. {c.rationale}"
+            ).strip(),
+        )
+    return None
 
 
 async def _select_pick(
@@ -90,24 +130,44 @@ async def _select_pick(
     drafted_ids: set[int],
     strategy_name: str,
 ) -> DraftPick:
-    """Loop Drafter calls until a valid pick is produced or candidates are exhausted."""
+    """Loop Drafter calls until a valid pick is produced. Falls back to the
+    top valid candidate if the Drafter is uncooperative for too many attempts.
+    """
     current_roster = [_pick_summary(p) for p in team_picks]
+    candidate_ids = {c.player_id for c in candidates}
     remaining = list(candidates)
     for attempt in range(DRAFTER_MAX_ATTEMPTS):
         if not remaining:
             break
         pick = await run_drafter(remaining, current_roster, strategy_name)
-        if _validate(pick, team_picks, drafted_ids):
+        if _validate(pick, team_picks, drafted_ids, candidate_ids):
             return pick
-        logger.info(
-            "Drafter attempt %d rejected (player_id=%d position=%s)",
+        reason = (
+            "hallucinated id"
+            if pick.player_id not in candidate_ids
+            else "already drafted" if pick.player_id in drafted_ids else "position filled"
+        )
+        logger.warning(
+            "Drafter attempt %d rejected (%s; player_id=%d position=%s)",
             attempt + 1,
+            reason,
             pick.player_id,
             pick.position,
         )
         remaining = [c for c in remaining if c.player_id != pick.player_id]
+
+    # Fallback: the engine should make forward progress rather than crashing.
+    fallback = _fallback_pick(candidates, team_picks, drafted_ids)
+    if fallback is not None:
+        logger.warning(
+            "Drafter failed after %d attempts; using fallback %s (%s)",
+            DRAFTER_MAX_ATTEMPTS,
+            fallback.player_name,
+            fallback.position,
+        )
+        return fallback
     raise DraftError(
-        f"Drafter failed to produce a valid pick after {DRAFTER_MAX_ATTEMPTS} attempts"
+        f"No valid candidate found in {len(candidates)} after {DRAFTER_MAX_ATTEMPTS} attempts"
     )
 
 
@@ -153,6 +213,16 @@ async def _do_pick(
         research.candidates, team_picks, drafted_ids, team.strategy_name
     )
 
+    # Resolve the player BEFORE persisting so a hallucinated id from the
+    # Researcher can't leave a half-written pick row behind. SQLite doesn't
+    # enforce FKs by default, so we have to check ourselves.
+    player = player_repo.get_player(session, chosen.player_id)
+    if player is None:
+        raise DraftError(
+            f"Picked player_id={chosen.player_id} ('{chosen.player_name}') "
+            "is not in the player pool — agent likely fabricated the id."
+        )
+
     pick_repo.create_pick(
         session,
         draft_id=draft.id,
@@ -162,7 +232,6 @@ async def _do_pick(
         pick_number=pick_number,
         rationale=chosen.rationale,
     )
-    player = player_repo.get_player(session, chosen.player_id)
 
     write_pick_vector(
         draft_id=draft.id,
