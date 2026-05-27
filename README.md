@@ -2,14 +2,6 @@
 
 An autonomous AI fantasy baseball draft simulator. Two AI-powered teams, each assigned a distinct strategy (Power Hitting vs. Speed & Defense, Ace Pitching vs. Closer-Heavy, etc.), draft against each other and produce written rationales for every pick. A deterministic 0–100 alignment score plus an LLM-narrated letter grade evaluate how well each team executed its strategy.
 
-## Stack
-
-Backend: Python 3.12+, FastAPI, SQLite (SQLAlchemy 2.x), OpenAI Agents SDK (`gpt-4o-mini`), `sentence-transformers/all-MiniLM-L6-v2` for local embeddings, `ddgs` for web search, `mlb-statsapi` for the 2025 player pool.
-
-Frontend: React 19, Vite 6, Tailwind 4, react-router 7, recharts, lucide-react.
-
-Packaging: One Docker container serves both the FastAPI API and the statically built React SPA on port 8000.
-
 ## Screenshots
 
 ### Jira board
@@ -30,16 +22,60 @@ Each team's deterministic alignment score, narrated letter grade, and rationale,
 
 ![Grade](docs/images/grade-page.png)
 
+## Technologies
+
+| Layer | Stack |
+|---|---|
+| Backend | Python 3.12+, FastAPI, OpenAI Agents SDK (`gpt-4o-mini`), Pydantic v2, `uv` |
+| Frontend | React 19, Vite 6, Tailwind 4, react-router 7, recharts, lucide-react |
+| Database | SQLite + SQLAlchemy 2.x (one file, `Base.metadata.create_all` at boot, no Alembic) |
+| RAG / embeddings | `sentence-transformers/all-MiniLM-L6-v2` on CPU (384-dim), JSON files + NumPy cosine similarity, mtime-keyed in-process cache |
+| External data | `mlb-statsapi` for the 2025 player pool (cached on disk), `ddgs` (DuckDuckGo) for the Researcher's web tool |
+| Streaming / concurrency | Server-Sent Events, `asyncio.create_task` (one Python process, no Celery/RQ) |
+| Packaging | Multi-stage Docker image, `docker-compose`, OS-specific start/stop scripts |
+
 ## How this was built with Claude Code
 
-The project was developed end-to-end inside Claude Code, with MCP servers handling the workflow:
+The project was developed end-to-end inside Claude Code with MCP servers and a small set of custom skills providing the workflow.
 
-- **Atlassian MCP** read the ticket spec for each MLB-N issue from `https://aacister.atlassian.net`, then transitioned the issue to Done once the corresponding PR merged.
-- **GitHub MCP** (with local `git` as fallback when the MCP session was unavailable) created branches, opened pull requests, and merged to `main`.
-- **Filesystem MCP** edited project files inside the repo.
-- **SQLite MCP** queried `./data/mlbdraftoracle.db` during development.
+### What `CLAUDE.md` provided
 
-Per ticket, Claude Code followed a fixed feature-dev process:
+A single living spec file at the repo root pins down everything Claude Code references on every turn:
+
+- **Hard constraints** — Python 3.12+, FastAPI, SQLite, React + Tailwind, runs entirely locally, non-relational state as JSON files under `./memory/`.
+- **10 design decisions** — agent framework (OpenAI Agents SDK), LLM (`gpt-4o-mini`), embedding model (`all-MiniLM-L6-v2` local), web search (`ddgs`), MLB stats (`mlb-statsapi`), vector store (JSON + NumPy), streaming (SSE), concurrency (asyncio), frontend toolchain (Vite + React 19 + Tailwind 4), database migrations (`create_all` at boot).
+- **Functional requirements** — player pool size and stat shape, six named strategies with explicit stat tags, draft creation/execution flow, agent responsibilities, two-phase grading, ADP trend analysis.
+- **Persistence layout** — relational truth in SQLite, snapshots and vectors as JSON files under `./memory/`.
+- **API surface** — every `/v1` endpoint the FastAPI app must expose.
+- **Coding conventions** — `from __future__ import annotations`, full type hints, Pydantic v2 at boundaries, `ruff`/`eslint`/`prettier`, `pytest` + `vitest`.
+- **Dev process** — every feature flows through Jira → feature branch → tests → PR → merge → feature-log entry → CLAUDE.md update.
+
+`docs/decisions.md` is a one-or-two-sentence restatement of every design choice for contributors. `docs/feature_insturctions.md` is the running ledger of completed work.
+
+### Custom skills (authored in MLB-3, used in every subsequent ticket)
+
+Five domain-specific skills were authored under `.claude/skills/` so Claude Code could load the right constraints automatically without re-reading the full spec each turn:
+
+| Skill | What it pins down |
+|---|---|
+| `domain-vocab` | Draft mechanics, position bucket rules (C / 1B / OF / P), six strategy names with stat tags, fantasy stat categories |
+| `sqlite-conventions` | Table naming, UUID v4 string primary keys, JSON columns for variable-shape data, SQLAlchemy 2.x model + function-style repository patterns |
+| `agent-prompts` | House style for Researcher / Drafter / Grader: input schemas, Pydantic Structured Outputs, max-turn limits, retry logic |
+| `vector-store` | Canonical embedding text recipe, pick/ADP file schemas, cosine-search interface, mtime-keyed cache |
+| `local-only` | Constraint checklist that auto-fires when a new dependency or persistence layer is proposed — prevents drift toward managed services |
+
+Built-in skills also used during the build: `feature-dev`, `skill-creator`, `code-review`, `frontend-design`.
+
+### MCP servers used
+
+| Server | Role |
+|---|---|
+| **Atlassian** | Read each MLB-N ticket from `https://aacister.atlassian.net`; transition the ticket to Done after the PR merged |
+| **GitHub** | Create branches, open pull requests, merge to `main` (local `git` as fallback when the MCP session was unavailable) |
+| **Filesystem** | Edit files in the repo |
+| **SQLite** | Query `./data/mlbdraftoracle.db` during development |
+
+### Per-ticket workflow
 
 1. Read the Jira ticket via the Atlassian MCP.
 2. Plan, then implement on a feature branch (`mlb-<N>-<slug>`).
@@ -48,18 +84,6 @@ Per ticket, Claude Code followed a fixed feature-dev process:
 5. Append the completed work and design notes to `docs/feature_insturctions.md`.
 6. Transition the Jira ticket to Done.
 
-### Decision process
-
-For each ticket Claude Code went through the same sequence:
-
-1. **Discovery.** Read the Jira spec plus `CLAUDE.md`, the custom skills, and `docs/decisions.md` to understand constraints.
-2. **Codebase exploration.** Inspect existing modules and patterns; in larger tickets, launch `code-explorer` sub-agents in parallel for different aspects.
-3. **Clarifying questions.** Surface ambiguities and ask the operator before designing — for example, the strategy threshold values, the catcher-supplement approach, the engine fallback behavior on hallucinated player IDs.
-4. **Architecture.** Sketch one or more approaches, name trade-offs, pick the simplest viable one consistent with `docs/decisions.md`.
-5. **Implementation.** Small, incremental commits; tests written alongside or first when the ticket called for TDD.
-6. **Quality review.** Run the test suite end-to-end; for non-trivial changes, audit the diff before push.
-7. **Summary.** Record what was built, why, and any deferred follow-ups in `docs/feature_insturctions.md`.
-
 ## Feature timeline
 
 Each row corresponds to one Jira issue and one merged PR. See `docs/feature_insturctions.md` for full per-ticket detail.
@@ -67,20 +91,18 @@ Each row corresponds to one Jira issue and one merged PR. See `docs/feature_inst
 | Ticket | Outcome |
 |---|---|
 | MLB-1  | Read `CLAUDE.md`; established project understanding |
-| MLB-2  | Verified required MCP servers (atlassian, github, brave-search, ide) |
+| MLB-2  | Verified required MCP servers |
 | MLB-3  | Scaffolded five custom Claude Code skills in `.claude/skills/` |
-| MLB-4  | Wrote `docs/decisions.md` — single-page summary of all design choices |
+| MLB-4  | Wrote `docs/decisions.md` — single-page summary of design choices |
 | MLB-5  | Project scaffold: `pyproject.toml`, `package.json`, `.env.example`, `.mcp.json` |
 | MLB-6  | SQLite layer: SQLAlchemy models + function-style repositories + 19 tests |
-| MLB-7  | 2025 player-pool ingestion via `mlb-statsapi` with file-based response cache; 414 players ingested across C/1B/OF/P |
-| MLB-8  | Vector store (JSON + NumPy cosine), embeddings, deterministic grading algorithm; 146 tests |
-| MLB-9  | Researcher, Drafter, Grader agents + snake-draft engine + SSE event log; 174 tests |
-| MLB-10 | FastAPI app with all `/v1` endpoints and the SSE streaming endpoint; 217 tests |
-| MLB-11 | React 19 frontend: Home, Draft Room, Grade, Leaderboard, ADP Trends |
+| MLB-7  | 2025 player-pool ingestion via `mlb-statsapi` with on-disk response cache (414 players) |
+| MLB-8  | Vector store (JSON + NumPy cosine), embeddings, deterministic grading algorithm |
+| MLB-9  | Researcher, Drafter, Grader agents + snake-draft engine + SSE event log |
+| MLB-10 | FastAPI app with all `/v1` endpoints and the streaming endpoint |
+| MLB-11 | React frontend: Home, Draft Room, Grade, Leaderboard, ADP Trends |
 | MLB-12 | Canonical end-to-end test exercising the full HTTP-to-engine-to-disk flow |
-| Follow-up | Docker packaging: multi-stage build, single-container deployment, OS-specific start/stop scripts |
-
-Several live-test bugs were also fixed in follow-up branches: position lookup gap in `mlb-statsapi`, catcher coverage supplement, Researcher max-turns budget, frontend SSE gating, ADP Trends tab type confusion, and Drafter/Researcher player-ID hallucination filtering.
+| Follow-up | Docker packaging + single-container deployment + OS-specific start/stop scripts |
 
 ## Run it
 
@@ -93,13 +115,9 @@ cp .env.example .env                # add OPENAI_API_KEY
 scripts/start-windows.ps1           # or scripts/start-mac.sh / start-linux.sh
 ```
 
-The container builds on first run (a few minutes), ingests the 2025 player pool (cached after the first run), and serves the full app at:
-
-**http://localhost:8000**
+The container builds on first run, ingests the 2025 player pool (cached afterwards), and serves the full app at **http://localhost:8000**.
 
 Stop with `scripts/stop-windows.ps1` (or the OS equivalent).
-
-To run the suite locally without Docker, see the per-stack quick-starts in `docs/decisions.md`.
 
 ## License
 
