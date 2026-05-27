@@ -1,6 +1,8 @@
 # MLB Draft Oracle
 
-An autonomous AI fantasy baseball draft simulator. Two AI-powered teams, each assigned a distinct strategy (Power Hitting vs. Speed & Defense, Ace Pitching vs. Closer-Heavy, etc.), draft against each other and produce written rationales for every pick. A deterministic 0–100 alignment score plus an LLM-narrated letter grade evaluate how well each team executed its strategy.
+This repository is a demonstration of building a full-stack AI application end-to-end inside Claude Code. Every feature on `main` was implemented ticket by ticket from a Jira board: the **Atlassian MCP** server read each MLB-N ticket from [`https://aacister.atlassian.net`](https://aacister.atlassian.net/jira/software/projects/MLB/boards/34) and transitioned it to Done after merge; the **GitHub MCP** server (with local `git` as fallback) created the feature branch, opened the pull request, and merged to `main`; and `docs/feature_insturctions.md` records the running ledger of completed work. No engineering task on this codebase — reading the spec, writing code, running tests, opening PRs, closing tickets — was performed by hand.
+
+The application itself is an autonomous AI fantasy baseball draft simulator. Two AI-powered teams, each assigned a distinct strategy (Power Hitting vs. Speed & Defense, Ace Pitching vs. Closer-Heavy, etc.), draft against each other and produce written rationales for every pick. A deterministic 0–100 alignment score plus an LLM-narrated letter grade evaluate how well each team executed its strategy.
 
 ## Screenshots
 
