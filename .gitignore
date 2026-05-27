@@ -87,8 +87,6 @@ memory/
 # Alembic
 alembic/versions/*.pyc
 
-# Docker
-.dockerignore
 
 # Misc
 *.bak

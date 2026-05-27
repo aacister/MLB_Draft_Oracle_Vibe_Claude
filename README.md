@@ -12,7 +12,30 @@ Autonomous AI draft simulator for fantasy baseball. Two AI-powered teams with di
 
 See [docs/decisions.md](docs/decisions.md) for the rationale behind each choice.
 
-## Quick Start
+## Quick Start (Docker — recommended)
+
+The whole stack runs in one container.
+
+```bash
+cp .env.example .env                # add your OPENAI_API_KEY
+
+# macOS
+scripts/start-mac.sh                # builds image on first run; http://localhost:8000
+scripts/stop-mac.sh
+
+# Linux
+scripts/start-linux.sh
+scripts/stop-linux.sh
+
+# Windows
+scripts\start-windows.ps1
+scripts\stop-windows.ps1
+```
+
+The frontend is built as static assets and served by FastAPI on the same port,
+so `http://localhost:8000` serves both the SPA and the `/v1/*` API.
+
+## Quick Start (local dev, no Docker)
 
 ```bash
 # from project root:
@@ -45,10 +68,12 @@ claude mcp add github npx -y @modelcontextprotocol/server-github
 backend/                FastAPI app, agents, repositories, embeddings
 frontend/               React 19 + Vite + Tailwind 4 SPA
 scripts/                start/stop scripts (per OS)
-data/                   SQLite database file (gitignored)
-memory/                 JSON snapshots, vector embeddings (gitignored)
+data/                   SQLite database file (gitignored, volume-mounted by compose)
+memory/                 JSON snapshots, vector embeddings (gitignored, volume-mounted)
 docs/                   decisions.md, feature_insturctions.md
 .claude/skills/         custom Claude Code skills
+Dockerfile              multi-stage: builds frontend then bakes it into the backend image
+docker-compose.yml      mounts data/ and memory/ for persistence across restarts
 ```
 
 ## Testing

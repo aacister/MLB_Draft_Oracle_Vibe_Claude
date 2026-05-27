@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mlb-draft-oracle
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      SEASON: "2025"
+      AGENT_MODEL: "gpt-4o-mini"
+      EMBEDDING_MODEL: "all-MiniLM-L6-v2"
+    # Persist drafts, snapshots, vectors, and the ingestion cache across
+    # restarts. The SQLite schema is still created at boot via create_all.
+    volumes:
+      - ./data:/app/data
+      - ./memory:/app/memory
+    restart: unless-stopped
