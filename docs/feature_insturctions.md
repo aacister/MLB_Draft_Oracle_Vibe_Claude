@@ -195,3 +195,33 @@ All 10 `/v1` endpoints from CLAUDE.MD wired up, with the SSE streaming endpoint 
 **Bug fix in `app/db.py`:** In-memory SQLite now uses `StaticPool` + `check_same_thread=False`. Without this, FastAPI's `TestClient` (which runs requests in a separate thread) gets its own empty connection, causing `no such table: draft` errors.
 
 **Tests:** 217/217 passing in 21.16s. 43 new tests (15 names+analytics, 28 API). Streaming tests cover content-type, full replay, `Last-Event-ID` resumption, error event for unknown draft, and termination on `completed`.
+
+---
+
+## MLB-11: Build the React frontend in this order: Home → Draft Room → Grade → Leaderboard → ADP Trends
+
+**Status:** Done — merged to `main` via branch `mlb-11-react-frontend`
+
+Full React frontend built in spec order. Vite + React 19 + Tailwind 4 + react-router 7 + recharts + lucide-react.
+
+| Page | Detail |
+|---|---|
+| Home | `StartDraftForm` (random or named strategies, 1–20 rounds; submit → POST `/v1/drafts` → navigate to draft room) + past drafts list with status + strategies + created_at |
+| Draft Room | Header with status + "live" indicator + Start Draft / View Grade buttons; three-column grid (TeamPanel / PickFeed / TeamPanel); PlayersBoard with position filter excluding already-drafted ids; SSE via `useDraftStream` reloading snapshot on `pick_completed` / `draft_completed` |
+| Grade | Per-team cards (letter + score + rationale) + recharts BarChart comparing alignment_scores |
+| Leaderboard | Strategy table |
+| ADP Trends | 3-tab view (overdrafted table / ignored positions table / season shift recharts LineChart) |
+
+**Shared infrastructure:**
+- `src/api.ts` — typed fetch client; throws with body text on non-ok
+- `src/types.ts` — TS types mirroring backend Pydantic schemas
+- `src/hooks/useDraftStream.ts` — EventSource hook with handlers per named event type; closes on `draft_completed` / `stream_end`
+- `src/components/Nav.tsx` — top nav with active-route highlighting
+- `vite.config.ts` proxy `/v1` + `/health` → `http://localhost:8000`
+- `src/index.css` Tailwind 4 `@theme` declaring the 5 colors from CLAUDE.MD (accent-yellow, blue-primary, purple-secondary, dark-navy, gray-text)
+
+**Build verification:**
+- `npm install` → 450 packages
+- `npm run build` → 2213 modules → 650 KB JS (189 KB gzip), 13 KB CSS (3.5 KB gzip) in 12.78s
+- `npm test` → 9/9 passing (6 api + 3 hook tests with FakeEventSource)
+- Backend regression: 217/217 passing
