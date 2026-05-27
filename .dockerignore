@@ -1,0 +1,33 @@
+# Don't ship local dev artifacts into the image.
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/node_modules
+**/dist
+**/.eslintcache
+**/*.tsbuildinfo
+
+# Local runtime data (volume-mounted instead)
+data/
+memory/
+
+# Local config
+.env
+.git/
+.github/
+.claude/
+.vscode/
+.idea/
+
+# Build outputs
+backend/.venv
+frontend/dist
+frontend/node_modules
+
+# Docs/CI files not needed inside the image
+docs/
+*.md
+README.md
+LICENSE
