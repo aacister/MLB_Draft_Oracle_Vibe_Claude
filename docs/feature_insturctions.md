@@ -167,3 +167,31 @@ The brain of the application: 3 agents + snake-draft engine. LLM and web search 
 - `test_search.py` (6), `test_snapshots.py` (6), `test_events.py` (8)
 - `test_agents.py` (4) — mocks `agents.Runner.run` via `AsyncMock`, verifies input shape + final_output unwrap + max_turns
 - `test_engine.py` (4) — end-to-end 2-team/2-round snake draft with mocked agents (real DB, real embed, real file I/O); retry-skip test; `DraftError` cases
+
+---
+
+## MLB-10: Build the FastAPI app and the streaming endpoint
+
+**Status:** Done — merged to `main` via branch `mlb-10-fastapi-app`
+
+All 10 `/v1` endpoints from CLAUDE.MD wired up, with the SSE streaming endpoint as the centerpiece.
+
+| Endpoint | Detail |
+|---|---|
+| `POST /v1/drafts` | Creates with random or named strategies; rejects duplicates/unknown; generates witty draft + team names |
+| `GET /v1/drafts` | Newest first |
+| `GET /v1/drafts/{id}` | Full snapshot |
+| `POST /v1/drafts/{id}/run` | Idempotent; `asyncio.create_task` with fresh session in background |
+| `GET /v1/drafts/{id}/stream` | SSE; reads event log via `read_events(since_id=)`; resumes from `Last-Event-ID` header; closes on `status=completed`; error on unknown draft |
+| `GET /v1/players` | `?position=` + `?q=` filters |
+| `GET /v1/drafts/{id}/grade` | Per-team letter + score + rationale |
+| `GET /v1/leaderboard` | Avg alignment_score by strategy |
+| `GET /v1/adp/trends` | `?view=overdrafted` / `ignored_positions` / `season_shift` |
+| `POST /v1/admin/ingest` | Dev-only re-ingest |
+| `GET /health` | Liveness probe |
+
+**Modules added:** `app/main.py` (FastAPI + CORS for `localhost:5173` + lifespan), `app/names.py`, `app/analytics.py`, `app/api/{deps,schemas,drafts,players,analytics,admin}.py`.
+
+**Bug fix in `app/db.py`:** In-memory SQLite now uses `StaticPool` + `check_same_thread=False`. Without this, FastAPI's `TestClient` (which runs requests in a separate thread) gets its own empty connection, causing `no such table: draft` errors.
+
+**Tests:** 217/217 passing in 21.16s. 43 new tests (15 names+analytics, 28 API). Streaming tests cover content-type, full replay, `Last-Event-ID` resumption, error event for unknown draft, and termination on `completed`.
