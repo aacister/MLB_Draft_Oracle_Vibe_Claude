@@ -27,15 +27,32 @@ const TABS: { key: View; label: string }[] = [
 export function AdpTrends() {
   const [view, setView] = useState<View>("overdrafted");
   const [rows, setRows] = useState<OverdraftedRow[] | IgnoredPositionRow[] | SeasonShiftRow[]>([]);
+  // Track which view the rows belong to so we never render a view-specific
+  // component (e.g. OverdraftedView) with rows fetched for a different view —
+  // the type cast would be a lie and accessing missing fields throws,
+  // unmounting the route.
+  const [rowsView, setRowsView] = useState<View | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    void api
+    api
       .adpTrends(view)
-      .then((r) => setRows(r))
-      .finally(() => setLoading(false));
+      .then((r) => {
+        if (cancelled) return;
+        setRows(r);
+        setRowsView(view);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [view]);
+
+  const dataReady = !loading && rowsView === view;
 
   return (
     <div className="space-y-6">
@@ -59,7 +76,7 @@ export function AdpTrends() {
         ))}
       </div>
 
-      {loading ? (
+      {!dataReady ? (
         <p className="text-sm text-[#888888]">Loading…</p>
       ) : rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-[#888888]">
