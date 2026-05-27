@@ -5,17 +5,27 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.models import Base
 from app.paths import db_url, ensure_dirs
 
 
 def create_db_engine(url: str | None = None) -> Engine:
-    """Create a SQLAlchemy engine. Defaults to the on-disk project database."""
+    """Create a SQLAlchemy engine. Defaults to the on-disk project database.
+
+    Uses ``StaticPool`` for in-memory SQLite so multi-threaded callers (e.g.,
+    FastAPI's ``TestClient``) share a single connection — otherwise each thread
+    would see an empty database.
+    """
     if url is None:
         ensure_dirs()
         url = db_url()
-    return create_engine(url, echo=False, future=True)
+    kwargs: dict = {"echo": False, "future": True}
+    if ":memory:" in url:
+        kwargs["connect_args"] = {"check_same_thread": False}
+        kwargs["poolclass"] = StaticPool
+    return create_engine(url, **kwargs)
 
 
 def init_schema(engine: Engine) -> None:
