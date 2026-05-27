@@ -225,3 +225,28 @@ Full React frontend built in spec order. Vite + React 19 + Tailwind 4 + react-ro
 - `npm run build` → 2213 modules → 650 KB JS (189 KB gzip), 13 KB CSS (3.5 KB gzip) in 12.78s
 - `npm test` → 9/9 passing (6 api + 3 hook tests with FakeEventSource)
 - Backend regression: 217/217 passing
+
+---
+
+## MLB-12: Wire up the end-to-end test
+
+**Status:** Done — merged to `main` via branch `mlb-12-e2e-test`
+
+The canonical E2E test per CLAUDE.MD §Coding Conventions: "a 2-team / 2-round draft with web search and the LLM mocked, asserts both grade rows exist, and asserts the expected count of pick vectors landed on disk."
+
+**File:** `backend/tests/test_e2e.py` (single test, ~160 LoC).
+
+**Flow:**
+1. Seed 6-player pool covering OF, 1B, C, P
+2. Mock Researcher, Drafter, Grader (LLM + web search bypassed)
+3. `POST /v1/drafts` to create with named strategies
+4. `POST /v1/drafts/{id}/run` to trigger the background engine
+5. Poll `GET /v1/drafts/{id}` until `status=completed` (10s timeout)
+6. `GET /v1/drafts/{id}/grade` → assert both grades exist with correct strategies
+7. Assert 4 pick vectors + 4 ADP vectors in `./memory/vectors/{picks,adp}/`
+8. Assert full event sequence in JSONL log (`draft_started` → 4×{`pick_starting`, `research_complete`, `pick_completed`} → 2×`team_graded` → `draft_completed`)
+9. Assert snapshot reflects completed state
+
+**Why the polling pattern works:** `POST /run` schedules an `asyncio.create_task` in TestClient's anyio worker thread. The worker keeps its event loop alive between requests, so when the main thread polls (with `time.sleep` between calls), the background engine task continues to run and eventually completes naturally.
+
+**Result:** 218/218 tests passing in ~20s (1 new test).
