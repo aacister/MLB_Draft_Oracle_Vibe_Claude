@@ -250,3 +250,23 @@ The canonical E2E test per CLAUDE.MD §Coding Conventions: "a 2-team / 2-round d
 **Why the polling pattern works:** `POST /run` schedules an `asyncio.create_task` in TestClient's anyio worker thread. The worker keeps its event loop alive between requests, so when the main thread polls (with `time.sleep` between calls), the background engine task continues to run and eventually completes naturally.
 
 **Result:** 218/218 tests passing in ~20s (1 new test).
+
+---
+
+## Follow-up: Docker packaging + static frontend serving
+
+**Status:** Done — merged to `main` via branch `docker-packaging`
+
+CLAUDE.MD §Technical design requires the project be packaged into a Docker container and suggests statically building the frontend and serving via FastAPI. The 12 roadmap tickets didn't explicitly scope this, so it was added as a follow-up.
+
+| File | Detail |
+|---|---|
+| `Dockerfile` | Multi-stage: `node:20-alpine` builds the frontend, `python:3.12-slim` installs backend deps via `uv sync --frozen --no-dev` and bakes the frontend dist into `/frontend-dist`. CMD ingests the 2025 pool then runs uvicorn on 0.0.0.0:8000. |
+| `.dockerignore` | Excludes `.venv`, `__pycache__`, `node_modules`, `dist`, local `data/`/`memory/`, `.git`, `.claude`, docs. |
+| `docker-compose.yml` | Builds the image; mounts `data/` and `memory/` for persistence across restarts; reads `.env` for `OPENAI_API_KEY`. |
+| `backend/app/main.py` | Resolves frontend location from `FRONTEND_DIST` env (Docker) or falls back to `../frontend/dist` (local). When found, mounts `/assets` as `StaticFiles` and adds a catch-all `GET /{full_path}` that returns `index.html` for any non-`/v1` path so React Router takes over. No-op in dev when no dist exists, so backend tests are unaffected. |
+| `scripts/start-{mac,linux}.sh`, `start-windows.ps1` | Wrappers around `docker compose up -d --build`. Validate `.env` exists. |
+| `scripts/stop-*` | Wrappers around `docker compose down`. |
+| `README.md` | Docker quick-start is now the recommended path; local-dev quick-start preserved as a fallback. |
+
+**Verification:** 218/218 backend tests pass after the `main.py` static-mount changes. Live `docker build` requires Docker Desktop running, verifiable via `scripts/start-windows.ps1` (or OS equivalent).
