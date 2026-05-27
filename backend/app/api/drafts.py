@@ -24,7 +24,7 @@ from app.events import read_events
 from app.names import generate_draft_name, generate_team_name
 from app.repositories import draft as draft_repo
 from app.repositories import team as team_repo
-from app.snapshots import build_snapshot, read_snapshot, write_snapshot
+from app.snapshots import build_snapshot, write_snapshot
 from app.strategies import STRATEGIES
 
 router = APIRouter(tags=["drafts"])
@@ -99,8 +99,13 @@ def list_drafts(session: Session = Depends(get_session)) -> list[DraftSummary]:
 def get_draft(
     draft_id: str, session: Session = Depends(get_session)
 ) -> dict[str, Any]:
-    """Return the full draft snapshot (teams, picks, status, config)."""
-    snapshot = read_snapshot(draft_id) or build_snapshot(session, draft_id)
+    """Return the full draft snapshot (teams, picks, status, config).
+
+    Always built fresh from the DB so callers see the latest status. The on-disk
+    snapshot file at ./memory/drafts/<id>.json is for the Grader and future
+    Researcher runs (per CLAUDE.MD §3); it isn't the source of truth for the API.
+    """
+    snapshot = build_snapshot(session, draft_id)
     if snapshot is None:
         raise HTTPException(404, f"draft {draft_id} not found")
     return snapshot
@@ -133,6 +138,7 @@ async def run_draft_endpoint(draft_id: str, request: Request) -> RunResponse:
         return RunResponse(status="running", draft_id=draft_id)
 
     running.add(draft_id)
+    background_tasks: set = request.app.state.background_tasks
 
     async def _wrapper() -> None:
         try:
@@ -140,7 +146,11 @@ async def run_draft_endpoint(draft_id: str, request: Request) -> RunResponse:
         finally:
             running.discard(draft_id)
 
-    asyncio.create_task(_wrapper())
+    # Hold a strong reference to the Task so it isn't garbage-collected
+    # mid-execution. asyncio only keeps a weak ref otherwise.
+    task = asyncio.create_task(_wrapper())
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
     return RunResponse(status="running", draft_id=draft_id)
 
 

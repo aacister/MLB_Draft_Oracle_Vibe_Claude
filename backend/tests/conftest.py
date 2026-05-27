@@ -70,6 +70,7 @@ def client(engine: Engine, isolated_paths: Path) -> Iterator[TestClient]:
     app.state.engine = engine
     app.state.session_factory = factory
     app.state.running_drafts = set()
+    app.state.background_tasks = set()
 
     with TestClient(app) as c:
         yield c
@@ -78,3 +79,4 @@ def client(engine: Engine, isolated_paths: Path) -> Iterator[TestClient]:
     app.state.engine = None
     app.state.session_factory = None
     app.state.running_drafts = set()
+    app.state.background_tasks = set()

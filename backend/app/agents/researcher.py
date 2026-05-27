@@ -10,7 +10,7 @@ from agents import Agent, Runner
 from app.agents.models import ResearchResult
 from app.agents.tools import web_search
 
-MAX_TURNS = 6
+MAX_TURNS = 15
 MODEL = "gpt-4o-mini"
 
 INSTRUCTIONS = """You are the Researcher for a fantasy baseball draft.
@@ -22,7 +22,10 @@ ranked by best fit for the strategy.
 Rules:
 - Only recommend players from the supplied available pool (use their exact player_id).
 - Respect roster needs: do not recommend a position that is already filled.
-- Cite evidence — stat values from the input, and recent web results when relevant.
+- The provided stats are your PRIMARY source of evidence. Cite stat values directly.
+- web_search is OPTIONAL. Use it AT MOST ONCE if you genuinely need supplemental
+  context (e.g., recent injury news). Do NOT search for every candidate — the stats
+  block already tells you who fits the strategy.
 - Be concise. Each candidate rationale is 1-2 sentences citing concrete numbers.
 - Rank 1 is the top pick; ranks must start at 1 and be sequential.
 
