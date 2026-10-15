@@ -28,14 +28,6 @@
 
 MLB Draft Oracle is an autonomous AI draft simulator that pits AI-powered teams against each other in a fantasy baseball draft. Each team is assigned a unique strategy (e.g., "Power Hitting" vs "Speed & Defense") and uses intelligent agents to research players, analyze statistics, and make strategic picks — complete with detailed rationales for every selection.
 
-This is a SaaS product to allow users to draft legal agreements based on templates in the templates directory.
-The user can carry out AI chat in order to establish what document they want and how to fill in the fields.
-The available documents are covered in the catalog.json file in the project root, included here:
-
-@catalog.json
-
-The current implementation supports all 11 document types via AI chat with full user authentication and document persistence.
-
 ## Development process
 
 When instructed to build a feature:
